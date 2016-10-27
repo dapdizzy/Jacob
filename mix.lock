@@ -1,0 +1,11 @@
+%{"certifi": {:hex, :certifi, "0.7.0"},
+  "exjsx": {:hex, :exjsx, "3.2.1"},
+  "hackney": {:hex, :hackney, "1.6.2"},
+  "httpoison": {:hex, :httpoison, "0.9.2"},
+  "idna": {:hex, :idna, "1.2.0"},
+  "jsx": {:hex, :jsx, "2.8.0"},
+  "metrics": {:hex, :metrics, "1.0.1"},
+  "mimerl": {:hex, :mimerl, "1.0.2"},
+  "slack": {:hex, :slack, "0.8.0"},
+  "ssl_verify_fun": {:hex, :ssl_verify_fun, "1.1.1"},
+  "websocket_client": {:hex, :websocket_client, "1.1.0"}}

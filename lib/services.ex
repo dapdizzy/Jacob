@@ -21,5 +21,19 @@ defmodule Services do
     "powershell .\\Get-ServiceState.ps1 #{service_name}"
     |> String.to_char_list
     |> :os.cmd
+    |> to_string
+    |> extract_word
+  end
+
+  defp extract_word(s), do: ~r/\w+/ |> Regex.run(s) |> hd
+
+  def get_target_status(verb) do
+    case verb do
+      "start" ->
+        "Running"
+      "stop" ->
+        "Stopped"
+      _ -> raise "Unexpected verb #{verb} in a call to Services.get_terget_status function"
+    end
   end
 end

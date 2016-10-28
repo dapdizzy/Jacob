@@ -7,7 +7,7 @@ defmodule Jacob do
     import Supervisor.Spec, warn: false
 
     children = [
-      worker(Slack.Bot, [Jacob.Bot, [], "xoxb-20736573366-Vi1mdPvDdyLzk4crlXEzlVkv"])
+      worker(Slack.Bot, [Jacob.Bot, [], "xoxb-20736573366-5CyExsREVAvWBzfYkNEqKHPm"])
       # Define workers and child supervisors to be supervised
       # worker(Jacob.Worker, [arg1, arg2, arg3]),
     ]

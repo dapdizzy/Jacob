@@ -2,17 +2,46 @@ defmodule Jacob.Bot do
   use Slack
 
   def handle_connect(slack, state) do
+
+    dir = "C:/Txt"
+    IO.puts "cwd is #{dir}"
+    dir |> File.mkdir_p!
+    file_name = dir |> Path.join("slack_state.txt")
+    IO.puts "filename is #{file_name}"
+    file_name |> File.write!(slack |> inspect(limit: 100))
+    IO.puts "Flushed Slack into #{file_name}"
+    file_name = dir |> Path.join("bot_state.txt")
+    file_name |> File.write!(state |> inspect(limit: 100))
+    IO.puts "Flushed Bot state into #{file_name}"
+
     IO.puts "Connected as #{slack.me.name}"
+    # raise "Exiting right away..."
+
     {:ok, state}
   end
 
   def handle_event(message = %{type: "message"}, slack, state) do
+
+    dir = Application.get_env(:jacob_bot, :cwd)
+    file_name = dir |> Path.join("Messages.txt")
+    txt = "\r\n" <> (if message |> personal_mention?(slack), do: "Personal", else: "General")
+    <> " message:\r\n\r\n#{message |> inspect}"
+    file_name |> File.write!(txt, [:append])
+
+    result =
     case message |> personal_mention?(slack) do
-      true -> process_personal_message message, slack
+      true  -> process_personal_message message, slack
       false -> :nothing
     end
 
-    {:ok, state}
+    # Try to process "Thank you" message if :nothing was processed so far
+    case result do
+      :nothing ->
+        process_thank_you message, slack, state
+      _ -> :nothing
+    end
+
+    {:ok, state |> Map.put(message.channel, {message.user, message.text})}
 
     # result =
     # [&process_dlls/3, &process_service_op/3, &dummy/3]
@@ -82,7 +111,7 @@ defmodule Jacob.Bot do
         send_message "Service #{service_name} is #{action_verb}ing...", channel, slack
         case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, Services.get_target_status(action_verb), channel, slack] do
           {:ok, _ref} -> send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
-          {:error, reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
+          {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
         end
       x -> send_message "#{action_verb} of service #{service_name} exited with code #{x}", channel, slack
     end
@@ -102,14 +131,16 @@ defmodule Jacob.Bot do
 
   defp dummy(_msg, _channel, _slack), do: :nothing
 
+  defp has_mention?(text), do: ~r/\<\@\w+\>/ |> Regex.match?(text)
+
   defp personal_mention?(message, slack),
-    do: String.contains?(message, slack.me.id)
-    or  message.channel == Slack.Lookups.lookup_direct_message_id(message.user)
+    do: String.contains?(message.text, slack.me.id)
+    or  message.channel == Slack.Lookups.lookup_direct_message_id(message.user, slack)
 
   defp process_personal_message(message, slack) do
     result =
     [&process_dlls/3, &process_service_op/3, &dummy/3]
-    |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, message.channel, slack) end)
+    |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil
     #   [_h1|_t1] = list ->
@@ -120,12 +151,62 @@ defmodule Jacob.Bot do
     case result do
       :nothing -> "I've got nothing for you, sir."
       nil -> "I've got nothing to do sir!"
-      r -> "My response for you, sir:\r\n#{r}"
+      r -> r # "My response for you, sir:\r\n#{r}"
       # [_h2|_t2] = list ->
       #   for {x, res} <- list, into: "", do: "#{x} --> #{res}\r\n"
     end
     # response = "Hello Sir!"
-    send_message(Slack.Lookups.lookup_user_name(message.user, slack) <> response, message.channel, slack)
+    send_message(Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> response, message.channel, slack)
+  end
+
+  defp process_thank_you(message, slack, state) do
+    {has_thank_you, language} = message.text |> has_thank_you?
+    cond do
+      has_thank_you
+      && ((!(message.text |> has_mention?)) || (message.text |> personal_mention?(slack)))
+      && (state |> Map.get(message.channel, nil) |> is_my_message?(slack)) ->
+        send_message Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> you_are_welcome_text(language), message.chanel, slack
+      true -> :nothing
+    end
+  end
+
+  defp is_my_message?({my_id, _}, %{me: %{id: my_id}} = _slack), do: true
+  defp is_my_message?(_, _slack), do: false
+
+  defp has_thank_you?(text) when text |> is_binary do
+    text = text |> String.downcase
+    cond do
+      text |> has_english_thank_you? -> {true, :english}
+      text |> has_russian_thank_you? -> {true, :russian}
+      text |> has_other_thank_you?   -> {true, :unknown}
+      true -> {false, nil}
+    end
+  end
+    #  ~r/(thank\s*you|10x|tnx|thanks|спасибо|пасибо|пасиба|спс|псб)/ |> Regex.match?(text)
+  defp has_thank_you?(_), do: false
+
+  defp has_english_thank_you?(text) do
+    ~r/(thank\s*you|tnx|thanks)/ |> Regex.match?(text)
+  end
+
+  defp has_russian_thank_you?(text) do
+    ~r/(спасибо|пасибо|пасиба|спс|псб)/ |> Regex.match?(text)
+  end
+
+  defp has_other_thank_you?(text) do
+    ~r/(10x)/ |> Regex.match?(text)
+  end
+
+  defp you_are_welcome_text(:russian) do
+    "На здоровье!"
+  end
+
+  defp you_are_welcome_text(:english) do
+    "You are welcome!"
+  end
+
+  defp you_are_welcome_text(_language) do
+    "請"
   end
 
 end

@@ -35,11 +35,11 @@ defmodule Jacob.Bot do
     end
 
     # Try to process "Thank you" message if :nothing was processed so far
-    case result do
-      :nothing ->
-        process_thank_you message, slack, state
-      _ -> :nothing
-    end
+    # case result do
+    #   :nothing ->
+    #     process_thank_you message, slack, state
+    #   _ -> :nothing
+    # end
 
     {:ok, state |> Map.put(message.channel, {message.user, message.text})}
 
@@ -96,36 +96,79 @@ defmodule Jacob.Bot do
   def process_service_op(msg, channel, slack) do
     case ~r/(?P<1verb>(start|stop))\W*service\W*(?P<2service_name>[\w\$`]+)/ |> Regex.run(msg, capture: :all_names) do
       [verb,service_name|_t] ->
-        spawn __MODULE__, :run_service_op, [service_name, verb, channel, slack]
+        spawn __MODULE__, :run_service_op, [service_name, verb, channel, slack, ~r/silent/ |> Regex.match?(msg)]
         "Im #{verb}ing #{service_name} service"
       _ -> nil
     end
   end
 
+  def process_stop(msg, channel, slack) do
+    if (~r/stop/ |> Regex.match(msg)) && (:notifications |> Helpers.ets_exist?) do
+      notification_options =
+      case :ets.lookup :notifications, channel do
+        [%{} = map] -> map
+        _ -> %{}
+      end
+      :ets.insert :notifications, channel, notification_options |> Map.put(:stop, true)
+    end
+  end
+
+  def process_cancel(msg, channel, slack) do
+    if (~r/cancel/ |> Regex.match?(msg)) && (:notifications |> Helpers.ets_exist?) do
+      notification_options =
+      case :ets.lookup :notifications, channel do
+        [%{} = map] -> map
+        _ -> %{}
+      end
+      :ets.insert :notifications, channel, notification_options |> Map.put(:cancel, true)
+    end
+  end
+
   defp extract_number(s), do: ~r/[0-9]+/ |> Regex.run(s) |> hd
 
-  def run_service_op(service_name, action_verb, channel, slack) do
+  defp expand_service_name(service_name) do
+    case Application.get_env :jacob_bot, :service_aliases, nil do
+      %{} = map -> map |> Map.get(service_name |> String.downcase, service_name)
+      nil -> service_name
+    end
+  end
+
+  def run_service_op(service_name, action_verb, channel, slack, silent \\ false) do
+    service_name = service_name |> expand_service_name
     res = apply Services, "#{action_verb}_service" |> String.to_atom, [service_name]
     case res |> to_string |> extract_number |> String.to_integer do
       0 ->
-        send_message "Service #{service_name} is #{action_verb}ing...", channel, slack
-        case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, Services.get_target_status(action_verb), channel, slack] do
-          {:ok, _ref} -> send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
-          {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
+        target_status = Services.get_target_status(action_verb)
+        state_reached =
+        case service_name |> Services.get_service_state do
+          ^target_status -> :yes
+          _ -> :no
+        end
+        case state_reached do
+          :yes ->
+            send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
+          _ ->
+            send_message "Service #{service_name} is #{action_verb}ing...", channel, slack
+            case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent] do
+              {:ok, _ref} -> if !silent, do: send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
+              {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
+            end
         end
       x -> send_message "#{action_verb} of service #{service_name} exited with code #{x}", channel, slack
     end
     :ok
   end
 
-  def check_service_status(service_name, target_status, channel, slack) do
+  def check_service_status(service_name, target_status, channel, slack, silent \\ false) do
     case Services.get_service_state service_name do
       ^target_status ->
         send_message "Service #{service_name} is now #{target_status}", channel, slack
         :done
       state ->
-        send_message "Service #{service_name} is #{state}", channel, slack
-        :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack]
+        if !silent do
+          send_message "Service #{service_name} is #{state}", channel, slack
+        end
+        :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent]
     end
   end
 

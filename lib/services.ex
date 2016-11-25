@@ -28,7 +28,7 @@ defmodule Services do
   defp extract_word(s), do: ~r/\w+/ |> Regex.run(s) |> hd
 
   def get_target_status(verb) do
-    case verb do
+    case verb |> String.downcase do
       "start" ->
         "Running"
       "stop" ->

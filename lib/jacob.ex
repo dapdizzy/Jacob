@@ -94,10 +94,13 @@ defmodule Jacob.Bot do
   end
 
   def process_service_op(msg, channel, slack) do
-    case ~r/(?P<1verb>(start|stop))\W*service\W*(?P<2service_name>[\w\$`]+)/ |> Regex.run(msg, capture: :all_names) do
+    case ~r/(?P<1verb>(start|stop))\W*service\W*(?P<2service_name>[\w\$`]+)/i |> Regex.run(msg, capture: :all_names) do
       [verb,service_name|_t] ->
-        spawn __MODULE__, :run_service_op, [service_name, verb, channel, slack, ~r/silent/ |> Regex.match?(msg)]
-        "Im #{verb}ing #{service_name} service"
+        service_name = service_name |> expand_service_name
+        if !check_service_in_target_state service_name, verb, channel, slack do
+          spawn __MODULE__, :run_service_op, [service_name, verb, channel, slack, ~r/silent/ |> Regex.match?(msg)]
+          "Im #{verb}ing #{service_name} service"
+        end
       _ -> nil
     end
   end
@@ -133,12 +136,22 @@ defmodule Jacob.Bot do
     end
   end
 
+  def check_service_in_target_state(service_name, action_verb, channel, slack) do
+    target_status = Services.get_target_status(action_verb)
+    case service_name |> Services.get_service_state do
+      ^target_status ->
+        send_message "Service #{service_name} is already #{target_status}", channel, slack
+        :ok
+      _ -> nil
+    end
+  end
+
   def run_service_op(service_name, action_verb, channel, slack, silent \\ false) do
-    service_name = service_name |> expand_service_name
+    action_verb = action_verb |> String.downcase
+    target_status = Services.get_target_status(action_verb)
     res = apply Services, "#{action_verb}_service" |> String.to_atom, [service_name]
     case res |> to_string |> extract_number |> String.to_integer do
       0 ->
-        target_status = Services.get_target_status(action_verb)
         state_reached =
         case service_name |> Services.get_service_state do
           ^target_status -> :yes
@@ -148,7 +161,7 @@ defmodule Jacob.Bot do
           :yes ->
             send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
           _ ->
-            send_message "Service #{service_name} is #{action_verb}ing...", channel, slack
+            send_message "Service *#{service_name}* is #{action_verb}ing...", channel, slack
             case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent] do
               {:ok, _ref} -> if !silent, do: send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
               {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
@@ -250,6 +263,12 @@ defmodule Jacob.Bot do
 
   defp you_are_welcome_text(_language) do
     "請"
+  end
+
+  def read_token do
+    filename = "Key" |> Cipher.encrypt
+    entrypted = filename |> File.read!
+    token = entrypted |> Cipher.decrypt
   end
 
 end

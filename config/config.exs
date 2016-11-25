@@ -10,6 +10,10 @@ use Mix.Config
       "aos" => "AOS60`$01"
     }
 
+  config Slack.Rtm,
+    proxy: "http://bluecoat.media-saturn.com:80",
+    proxy_auth: {"pyatkov", "DaoPwd1985!"}
+
   config :cipher,
     keyphrase: "testiekeyphraseforcipher",
     ivphrase: "testieivphraseforcipher",

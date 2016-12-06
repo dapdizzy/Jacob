@@ -2,7 +2,13 @@
 # and its dependencies with the aid of the Mix.Config module.
 use Mix.Config
 
-  config :jacob_bot, scripts_folder: "C:/AX/BuildScripts"
+  config :jacob_bot, scripts_folder: "C:/AX/BuildScripts",
+  cwd: "C:/Txt",
+  service_aliases:
+    %{
+      "kafka" => "KafkaProxyConnector",
+      "aos" => "AOS60`$01"
+    }
 # This configuration is loaded before any dependency and is restricted
 # to this project. If another project depends on this project, this
 # file won't be loaded nor affect the parent project. For this reason,

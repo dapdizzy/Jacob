@@ -4,12 +4,18 @@ use Mix.Config
 
   config :jacob_bot, scripts_folder: "C:/AX/BuildScripts",
   cwd: "C:/Txt",
+  aos: "aos",
   service_aliases:
     %{
       "kafka" => "KafkaProxyConnector",
-      "aos" => "AOS60`$01"
+      "aos" => "AOS60$01",
+      "cloud_client" => "MMS RECOMMERCE Cloud 2.0 Client"
+    },
+  service_deps:
+    %{
+      "kafka" => ["aos"],
+      "cloud_client" => ["aos"]
     }
-
 
   config :cipher,
     keyphrase: "testiekeyphraseforcipher",

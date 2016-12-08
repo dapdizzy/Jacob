@@ -84,6 +84,84 @@ defmodule Jacob.Bot do
     end
   end
 
+  def aos_restart(msg, channel, slack) do
+    case ~r/restart\_aos/U |> Regex.match?(msg) do
+      true ->
+        # ...
+        schedule =
+        case ~r/\bat\b(?<hours>d{2})\:(?<minutes>\d{2})/U |> Regex.scan(msg) do
+          nil -> nil
+          [] -> nil
+          [[_h1,h|_],[_m1,m|_]|_t1] = list ->
+            {h, m}
+        end
+        spawn_link __MODULE__, :restart_aos!, [schedule, channel, slack]
+        "Trying to restart AOS service"
+      false -> nil
+    end
+  end
+
+  def restart_aos!(schedule \\ nil, channel, slack) do
+    case schedule do
+      nil ->
+        # Do the job here...
+        Application.get_env(:jacob_bot, :aos)
+          |> build_service_op_seq
+          |> proceed_operations(channel, slack, false)
+        :yepp! # restart right away
+      {h, m} ->
+        :timer.hms(h, m, 0) |> :timer.now_diff(:os.timestamp)
+          |> :timer.apply_after(__MODULE__, :restart_aos, [nil])
+        :done # restart at the given time h:m
+    end
+  end
+
+  def service_depends_on(service_name) do
+    depends_on_map =
+    (for {key, value} <- Application.get_env(:jacob_bot, :service_deps),
+      into: [], do: for val <- value, into: [], do: {val, key})
+      |> List.flatten
+      |> Enum.reduce(%{},
+          fn {dependency, dependant}, acc ->
+            acc |> Map.update(dependency, [dependant], &([dependant|&1]))
+          end)
+    depends_on_map[service_name]
+    # for {dependency, dependant} <- depends_on_list,
+    #   into: %{}
+    #
+    #   |> Enum.reduce(%{},
+    #       fn {key, value}, acc ->
+    #         value |> Enum.reduce(acc,
+    #           fn dep, acc ->
+    #
+    #           end)  acc |> Map.put(any(), any())  end)
+    # for {key, val} <- Application.get_env(:jacob_bot, :service_deps),
+    #   into: %{}, do: val |> Enum.reduce(%{}, &({&1, key}))
+  end
+
+  def build_service_op_seq(service_name) do
+    service_name_expanded = service_name |> expand_service_name
+    services =
+    case service_name |> service_depends_on do
+      nil ->
+        [service_name_expanded]
+      [_h|_t] = list ->
+        expanded_list =
+        (for item <- list,
+          into: [],
+          do: item |> expand_service_name)
+        [service_name_expanded|expanded_list]
+          |> Enum.reverse
+    end
+    services |> service_list_to_op_seq
+  end
+
+  defp service_list_to_op_seq([_h|_t] = list) do
+    (for item <- list, into: [], do: {"stop", item |> expand_service_name})
+    ++
+    (for item <- Enum.reverse(list), into: [], do: {"start", item |> expand_service_name})
+  end
+
   def process_dlls(msg, _channel, _slack) do
     case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U |> Regex.scan(msg) do
       nil -> nil
@@ -146,7 +224,13 @@ defmodule Jacob.Bot do
     end
   end
 
-  def run_service_op(service_name, action_verb, channel, slack, silent \\ false) do
+  defp proceed_operations([], _channel, _slack, _silent), do: :done
+
+  defp proceed_operations([{action_verb, service_name}|t] = operations_list, channel, slack, silent \\ false) do
+    run_service_op service_name, action_verb, channel, slack, silent, t
+  end
+
+  def run_service_op(service_name, action_verb, channel, slack, silent \\ false, operations_list \\ []) do
     action_verb = action_verb |> String.downcase
     target_status = Services.get_target_status(action_verb)
     res = apply Services, "#{action_verb}_service" |> String.to_atom, [service_name]
@@ -160,9 +244,10 @@ defmodule Jacob.Bot do
         case state_reached do
           :yes ->
             send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
+            proceed_operations operations_list, channel, slack, silent
           _ ->
             send_message "Service *#{service_name}* is #{action_verb}ing...", channel, slack
-            case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent] do
+            case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list] do
               {:ok, _ref} -> if !silent, do: send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
               {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
             end
@@ -172,16 +257,16 @@ defmodule Jacob.Bot do
     :ok
   end
 
-  def check_service_status(service_name, target_status, channel, slack, silent \\ false) do
+  def check_service_status(service_name, target_status, channel, slack, silent \\ false, operations_list \\ []) do
     case Services.get_service_state service_name do
       ^target_status ->
         send_message "Service #{service_name} is now #{target_status}", channel, slack
-        :done
+        proceed_operations operations_list, channel, slack, silent
       state ->
         if !silent do
           send_message "Service #{service_name} is #{state}", channel, slack
         end
-        :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent]
+        :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list]
     end
   end
 
@@ -195,7 +280,7 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&process_dlls/3, &process_service_op/3, &dummy/3]
+    [&aos_restart/3, &process_dlls/3, &process_service_op/3, &dummy/3]
     |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil

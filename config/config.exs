@@ -5,6 +5,7 @@ use Mix.Config
   config :jacob_bot, scripts_folder: "C:/AX/BuildScripts",
   cwd: "C:/Txt",
   aos: "aos",
+  env: "stage",
   service_aliases:
     %{
       "kafka" => "KafkaProxyConnector",

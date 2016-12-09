@@ -84,36 +84,43 @@ defmodule Jacob.Bot do
     end
   end
 
-  def aos_restart(msg, channel, slack) do
-    case ~r/restart\_aos/U |> Regex.match?(msg) do
-      true ->
-        # ...
-        schedule =
-        case ~r/\bat\b(?<hours>d{2})\:(?<minutes>\d{2})/U |> Regex.scan(msg) do
-          nil -> nil
-          [] -> nil
-          [[_h1,h|_],[_m1,m|_]|_t1] = list ->
-            {h, m}
+  def restart_service(msg, channel, slack) do
+    env = Application.get_env(:jacob_bot, :env)
+    case ~r/restart\s+(?<service_name>\w+)\s+(?<env_name>\w+)\s*((?<hours>\d{2})\:(?<minutes>\d{2}))?/i |> Regex.named_captures(msg) do
+      nil -> nil
+      %{"env_name" => ^env} = map ->
+        spawn_link __MODULE__, :restart_service!, [map["service_name"], channel, slack, (if map["hours"] != "" || map["minutes"] != "", do: {map["hours"] |> String.to_integer, map["minutes"] |> String.to_integer})]
+        unless map["hours"] || map["minutes"] do
+          ~s|Trying to restart *#{map["service_name"]}* service|
+        else
+          ~s|Service *#{map["service_name"]}* restart scheduled at *#{map["hours"]}:#{map["minutes"]}*|
         end
-        spawn_link __MODULE__, :restart_aos!, [schedule, channel, slack]
-        "Trying to restart AOS service"
-      false -> nil
+      _ -> :silent
     end
   end
 
-  def restart_aos!(schedule \\ nil, channel, slack) do
+  def restart_service!(service_name, channel, slack, schedule \\ nil) do
     case schedule do
       nil ->
-        # Do the job here...
-        Application.get_env(:jacob_bot, :aos)
+        service_name
           |> build_service_op_seq
           |> proceed_operations(channel, slack, false)
         :yepp! # restart right away
       {h, m} ->
-        :timer.hms(h, m, 0) |> :timer.now_diff(:os.timestamp)
-          |> :timer.apply_after(__MODULE__, :restart_aos, [nil])
+        offset_ms(h, m)
+          |> :timer.apply_after(__MODULE__, :restart_service!, [service_name, channel, slack, nil])
         :done # restart at the given time h:m
     end
+  end
+
+  defp offset_ms(hours, minutes) do
+    {date, _time} = timestamp = :os.timestamp |> :calendar.now_to_local_time
+    IO.puts "timestamp #{inspect timestamp}"
+    diff =
+    (({date, {hours, minutes, 0}} |> :calendar.datetime_to_gregorian_seconds |> Kernel.*(1000)) -
+    (timestamp |> :calendar.datetime_to_gregorian_seconds |> Kernel.*(1000)))
+    IO.puts "Diff: #{diff}"
+    diff
   end
 
   def service_depends_on(service_name) do
@@ -218,7 +225,7 @@ defmodule Jacob.Bot do
     target_status = Services.get_target_status(action_verb)
     case service_name |> Services.get_service_state do
       ^target_status ->
-        send_message "Service #{service_name} is already #{target_status}", channel, slack
+        send_message "Service *#{service_name}* is already *#{target_status}*", channel, slack
         :ok
       _ -> nil
     end
@@ -246,7 +253,7 @@ defmodule Jacob.Bot do
             send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
             proceed_operations operations_list, channel, slack, silent
           _ ->
-            send_message "Service *#{service_name}* is #{action_verb}ing...", channel, slack
+            send_message "Service *#{service_name}* is #{ingify action_verb}...", channel, slack
             case :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list] do
               {:ok, _ref} -> if !silent, do: send_message "I'll be notifying you about the service state every 5 seconds", channel, slack
               {:error, _reason} -> send_message "Sorry, something went wrong and I won't be able to report to you on the service status updates", channel, slack
@@ -257,14 +264,16 @@ defmodule Jacob.Bot do
     :ok
   end
 
+  defp ingify(str), do: unless str |> String.downcase |> String.ends_with?(["ing", "ed"]), do: (if ~r/[^p]{1}p$/ |> Regex.match?(str), do: str <> "p", else: str) <> "ing", else: str
+
   def check_service_status(service_name, target_status, channel, slack, silent \\ false, operations_list \\ []) do
     case Services.get_service_state service_name do
       ^target_status ->
-        send_message "Service #{service_name} is now #{target_status}", channel, slack
+        send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
         proceed_operations operations_list, channel, slack, silent
       state ->
         if !silent do
-          send_message "Service #{service_name} is #{state}", channel, slack
+          send_message "Service *#{service_name}* is *#{ingify state}*", channel, slack
         end
         :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list]
     end
@@ -280,7 +289,7 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&aos_restart/3, &process_dlls/3, &process_service_op/3, &dummy/3]
+    [&restart_service/3, &process_dlls/3, &process_service_op/3, &dummy/3]
     |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil
@@ -297,7 +306,9 @@ defmodule Jacob.Bot do
       #   for {x, res} <- list, into: "", do: "#{x} --> #{res}\r\n"
     end
     # response = "Hello Sir!"
-    send_message(Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> response, message.channel, slack)
+    if result != :silent do
+      send_message(Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> response, message.channel, slack)
+    end
   end
 
   defp process_thank_you(message, slack, state) do

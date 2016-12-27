@@ -17,6 +17,8 @@ defmodule Jacob.Bot do
     IO.puts "Connected as #{slack.me.name}"
     # raise "Exiting right away..."
 
+    Helpers.spawn_process(fn -> :timer.apply_after 5000, Service.Watcher, :start_watching, [] end, true)
+
     {:ok, state}
   end
 
@@ -73,9 +75,56 @@ defmodule Jacob.Bot do
 
     {:ok, state}
   end
+  def handle_info({:send_message, message, destination}, slack, state) do
+    IO.puts "Resolving recepient #{destination}"
+    channel =
+    [&Slack.Lookups.lookup_direct_message_id/2, &Slack.Lookups.lookup_channel_id/2, fn _arg, _slack -> nil end]
+      |> Enum.reduce_while(destination, fn f, arg -> f |> wrap_func("@" <> arg, slack) end)
+    case channel do
+      nil ->
+        IO.puts "Your message could not be send. Destination *#{destination}* could not be resolved."
+      _ -> send_message message, channel, slack
+    end
+    {:ok, state}
+  end
+
+  def handle_info({:DOWN, ref, :process, pid, _reason} , _slack, state) do
+    child_processes = Helpers.get_child_processes
+    new_child_processes =
+    case child_processes |> Enum.any?(
+      fn
+        {^pid, ^ref, _definition, _is_restartable} ->
+          true
+        {_pid, _ref, _definition, _is_restartable} ->
+          false
+      end) do
+      true ->
+        child_processes |> Enum.filter(
+          fn
+            {^pid, ^ref, _definition, _is_restartable} ->
+              false
+            {_pid, _ref, _definition, _is_restartable} ->
+              true
+          end
+        )
+      false ->
+        child_processes
+    end
+    Helpers.set_child_processes new_child_processes
+
+    {:ok, state}
+  end
+
   def handle_info(_, _, state), do: {:ok, state}
 
   # Private functions
+
+  defp wrap_func(func, arg, slack) do
+    case func.(arg, slack) do
+      nil -> {:cont, arg}
+      x -> {:halt, x}
+    end
+  end
 
   defp wrap_func(func, msg, channel, slack) do
     case func.(msg, channel, slack) do
@@ -84,13 +133,54 @@ defmodule Jacob.Bot do
     end
   end
 
+  def process_how_is_he_doing(msg, channel, slack) do
+    env = Application.get_env(:jacob_bot, :env)
+    rex = "how\\s+[\\w\\W]*\\s*#{env}\\s+(?<service_name>\\w+)\\s+doing"
+      |> Regex.compile!([:caseless, :ungreedy])
+    IO.puts "Env: #{env}, rex: #{inspect rex}"
+    IO.puts "Analyzing msg: #{msg}"
+    case rex |> Regex.named_captures(msg) do
+      nil -> nil
+      %{"service_name" => service_name} ->
+        service_name_expanded = service_name |> expand_service_name
+        service_state = service_name_expanded |> Services.get_service_state
+        "Service *#{service_name_expanded}* is now *#{service_state}*"
+    end
+  end
+
+  # TODO: code it!
+  def freeze_bot(msg, _channel, _slack) do
+    env = Application.get_env(:jacob, :env)
+    case "#{env}\\s+bot\\s+freeze" |> Regex.compile!([:caseless]) |> Regex.match?(msg) do
+      true ->
+        Helpers.freeze!
+        processes_killed = Helpers.kill_child_processes
+        Helpers.update_child_processes!
+        "Bot is now *frozen*, *#{processes_killed}* child processes were killed"
+      false ->
+        nil
+    end
+  end
+
+  def unfreeze_bot(msg, _channel, _slack) do
+    env = Application.get_env(:jacob, :env)
+    case "#{env}\\s+bot\\s+unfreeze" |> Regex.compile!([:caseless]) |> Regex.match?(msg) do
+      true ->
+        Helpers.unfreeze!
+        processes_restarted = Helpers.restart_child_processes! |> Enum.count
+        "Bot has been *unfreezed*. *#{processes_restarted}* child processes have been restarted."
+      false ->
+        nil
+    end
+  end
+
   def restart_service(msg, channel, slack) do
     env = Application.get_env(:jacob_bot, :env)
     case ~r/restart\s+(?<service_name>\w+)\s+(?<env_name>\w+)\s*((?<hours>\d{2})\:(?<minutes>\d{2}))?/i |> Regex.named_captures(msg) do
       nil -> nil
       %{"env_name" => ^env} = map ->
-        spawn_link __MODULE__, :restart_service!, [map["service_name"], channel, slack, (if map["hours"] != "" || map["minutes"] != "", do: {map["hours"] |> String.to_integer, map["minutes"] |> String.to_integer})]
-        unless map["hours"] || map["minutes"] do
+        Helpers.spawn_process __MODULE__, :restart_service!, [map["service_name"], channel, slack, (if map["hours"] != "" || map["minutes"] != "", do: {map["hours"] |> String.to_integer, map["minutes"] |> String.to_integer})], false
+        if map["hours"] == "" && map["minutes"] == "" do
           ~s|Trying to restart *#{map["service_name"]}* service|
         else
           ~s|Service *#{map["service_name"]}* restart scheduled at *#{map["hours"]}:#{map["minutes"]}*|
@@ -183,7 +273,7 @@ defmodule Jacob.Bot do
       [verb,service_name|_t] ->
         service_name = service_name |> expand_service_name
         if !check_service_in_target_state service_name, verb, channel, slack do
-          spawn __MODULE__, :run_service_op, [service_name, verb, channel, slack, ~r/silent/ |> Regex.match?(msg)]
+          Helpers.spawn_process __MODULE__, :run_service_op, [service_name, verb, channel, slack, ~r/silent/ |> Regex.match?(msg)]
           "Im #{verb}ing #{service_name} service"
         end
       _ -> nil
@@ -197,7 +287,7 @@ defmodule Jacob.Bot do
         [%{} = map] -> map
         _ -> %{}
       end
-      :ets.insert :notifications, channel, notification_options |> Map.put(:stop, true)
+      # :ets.insert :notifications, channel, notification_options |> Map.put(:stop, true)
     end
   end
 
@@ -208,13 +298,13 @@ defmodule Jacob.Bot do
         [%{} = map] -> map
         _ -> %{}
       end
-      :ets.insert :notifications, channel, notification_options |> Map.put(:cancel, true)
+      # :ets.insert :notifications, channel, notification_options |> Map.put(:cancel, true)
     end
   end
 
   defp extract_number(s), do: ~r/[0-9]+/ |> Regex.run(s) |> hd
 
-  defp expand_service_name(service_name) do
+  def expand_service_name(service_name) do
     case Application.get_env :jacob_bot, :service_aliases, nil do
       %{} = map -> map |> Map.get(service_name |> String.downcase, service_name)
       nil -> service_name
@@ -264,7 +354,7 @@ defmodule Jacob.Bot do
     :ok
   end
 
-  defp ingify(str), do: unless str |> String.downcase |> String.ends_with?(["ing", "ed"]), do: (if ~r/[^p]{1}p$/ |> Regex.match?(str), do: str <> "p", else: str) <> "ing", else: str
+  def ingify(str), do: unless str |> String.downcase |> String.ends_with?(["ing", "ed"]), do: (if ~r/[^p]{1}p$/ |> Regex.match?(str), do: str <> "p", else: str) <> "ing", else: str
 
   def check_service_status(service_name, target_status, channel, slack, silent \\ false, operations_list \\ []) do
     case Services.get_service_state service_name do
@@ -289,7 +379,7 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&restart_service/3, &process_dlls/3, &process_service_op/3, &dummy/3]
+    [&freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &dummy/3]
     |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil

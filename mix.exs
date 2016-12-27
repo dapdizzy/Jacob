@@ -29,7 +29,7 @@ defmodule Jacob.Mixfile do
   # Type "mix help deps" for more examples and options
   defp deps do
     [
-      {:slack, "~> 0.8.0"},
+      {:slack, "~> 0.9.1"},
       {:cipher, ">= 1.2.0"}
     ]
   end

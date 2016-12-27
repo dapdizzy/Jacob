@@ -7,7 +7,7 @@ defmodule Jacob do
     import Supervisor.Spec, warn: false
 
     children = [
-      worker(Slack.Bot, [Jacob.Bot, %{}, Jacob.Bot.read_token])
+      worker(Slack.Bot, [Jacob.Bot, %{ets_table: :ets.new(:jacob_ets, [:set, :public, :named_table, read_concurrency: true])}, Jacob.Bot.read_token, %{name: Jacob}], id: Jacob)
       # Define workers and child supervisors to be supervised
       # worker(Jacob.Worker, [arg1, arg2, arg3]),
     ]

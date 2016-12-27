@@ -16,7 +16,11 @@ use Mix.Config
     %{
       "kafka" => ["aos"],
       "cloud_client" => ["aos"]
-    }
+    },
+  services_to_watch:
+    [{"kafka", :on}, {"aos", :on}, {"cloud_client", :on}],
+  notify_destination:
+    "dpyatkov"
 
   config :cipher,
     keyphrase: "testiekeyphraseforcipher",

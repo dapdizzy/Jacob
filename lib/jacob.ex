@@ -383,7 +383,7 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &dummy/3]
+    [&freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3, &dummy/3]
     |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil
@@ -405,13 +405,16 @@ defmodule Jacob.Bot do
     end
   end
 
-  defp process_thank_you(message, slack, state) do
-    {has_thank_you, language} = message.text |> has_thank_you?
+  def process_thank_you(message, slack, state) do
+    {has_thank_you, language} = message |> has_thank_you?
     cond do
       has_thank_you
-      && ((!(message.text |> has_mention?)) || (message.text |> personal_mention?(slack)))
-      && (state |> Map.get(message.channel, nil) |> is_my_message?(slack)) ->
-        send_message Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> you_are_welcome_text(language), message.chanel, slack
+      && ((!(message |> has_mention?)) || (message |> personal_mention?(slack)))
+      # For now we don't pass channel information to the handle functions, thuis we cannot reason about who sent the message
+      # && (state |> Map.get(message.channel, nil) |> is_my_message?(slack))
+      ->
+        you_are_welcome_text(language)
+        # Slack.Lookups.lookup_user_name(message.user, slack) <> " " <>
       true -> :nothing
     end
   end

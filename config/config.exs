@@ -8,15 +8,21 @@ use Mix.Config
   env: "stage",
   service_aliases:
     %{
-      "kafka" => "KafkaProxyConnector",
+      # "kafka" => "KafkaProxyConnector",
       "aos" => "AOS60$01",
-      "cloud_client" => "MMS RECOMMERCE Cloud 2.0 Client"
+      "cloud_client" => "WAX3PL Stage Cloud Client"
     },
   service_deps:
     %{
-      "kafka" => ["aos"],
+      # "kafka" => ["aos"],
       "cloud_client" => ["aos"]
-    }
+    },
+  services_to_watch:
+    [
+      # {"kafka", :on}, 
+    {"aos", :on}, {"cloud_client", :on}],
+  notify_destination:
+    "dpyatkov"
 
   config :cipher,
     keyphrase: "testiekeyphraseforcipher",

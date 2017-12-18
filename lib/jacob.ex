@@ -366,10 +366,14 @@ defmodule Jacob.Bot do
         send_message "Service *#{service_name}* is now *#{target_status}*", channel, slack
         proceed_operations operations_list, channel, slack, silent
       state ->
-        if !silent do
-          send_message "Service *#{service_name}* is *#{ingify state}*", channel, slack
+        if target_status |> String.trim |> String.downcase == state |> String.downcase do
+          check_service_status service_name, state, channel, slack, silent, operations_list
+        else
+          if !silent do
+            send_message "Service *#{service_name}* is *#{ingify state}*", channel, slack
+          end
+          :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list]
         end
-        :timer.apply_after 5000, __MODULE__, :check_service_status, [service_name, target_status, channel, slack, silent, operations_list]
     end
   end
 
@@ -401,7 +405,8 @@ defmodule Jacob.Bot do
     end
     # response = "Hello Sir!"
     if result != :silent do
-      send_message(Slack.Lookups.lookup_user_name(message.user, slack) <> " " <> response, message.channel, slack)
+      send_message("<@" <> message.user <> ">" <> " " <> response, message.channel, slack)
+      #Slack.Lookups.lookup_user_name(message.user, slack)
     end
   end
 

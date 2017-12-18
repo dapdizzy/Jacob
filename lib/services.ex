@@ -36,6 +36,7 @@ defmodule Services do
       |> :os.cmd
       |> to_string
       |> extract_word
+      |> String.trim 
   end
 
   defp extract_word(s) do

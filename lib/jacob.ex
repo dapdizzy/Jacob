@@ -18,6 +18,7 @@ defmodule Jacob.Bot do
     # raise "Exiting right away..."
 
     Helpers.spawn_process(fn -> :timer.apply_after 5000, Service.Watcher, :start_watching, [] end, true)
+    Helpers.spawn_process(fn -> :timer.apply_after 3000, Service.Watcher, :start_url_warmup, [] end, true)
 
     {:ok, state}
   end
@@ -467,6 +468,10 @@ defmodule Jacob.Bot do
     filename = "Key" |> Cipher.encrypt
     entrypted = filename |> File.read!
     token = entrypted |> Cipher.decrypt
+  end
+
+  def send_message_to_slack(server, message, destination) do
+    server |> send({:send_message, message, destination})
   end
 
 end

@@ -7,7 +7,23 @@ defmodule Jacob do
     import Supervisor.Spec, warn: false
 
     children = [
-      worker(Slack.Bot, [Jacob.Bot, %{ets_table: :ets.new(:jacob_ets, [:set, :public, :named_table, read_concurrency: true])}, Jacob.Bot.read_token, %{name: Jacob}], id: Jacob)
+      worker(Slack.Bot, [Jacob.Bot, %{ets_table: :ets.new(:jacob_ets, [:set, :public, :named_table, read_concurrency: true])}, Jacob.Bot.read_token, %{name: Jacob}], id: Jacob),
+      worker(
+        RabbitMQReceiver,
+        [
+          [
+            host: "rhino.rmq.cloudamqp.com",
+            username: "ftudzxhj",
+            virtual_host: "ftudzxhj",
+            password: "FojWUx6kp6-zFDtDT0tCkmFRQhcP7t-a"
+          ],
+          "AXMsg1",
+          Helpers,
+          :handle_send_to_slack_request,
+          true,
+          [name: RabbitMQReceiver]
+        ]
+      )
       # Define workers and child supervisors to be supervised
       # worker(Jacob.Worker, [arg1, arg2, arg3]),
     ]

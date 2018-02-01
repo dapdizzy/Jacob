@@ -19,15 +19,32 @@ use Mix.Config
     },
   services_to_watch:
     [
-      # {"kafka", :on}, 
+      # {"kafka", :on},
     {"aos", :on}, {"cloud_client", :on}],
   notify_destination:
     "dpyatkov"
+
+  ,
+
+  urls_to_warmup:
+    [
+      "https://warm-savannah-34152.herokuapp.com/"
+    ],
+  url_warmup_interval_mins: 20
 
   config :cipher,
     keyphrase: "testiekeyphraseforcipher",
     ivphrase: "testieivphraseforcipher",
     magic_token: "magictoken"
+
+  config :rabbitmq_sender,
+    rabbit_options:
+      [
+        host: "rhino.rmq.cloudamqp.com",
+        username: "ftudzxhj",
+        virtual_host: "ftudzxhj",
+        password: "FojWUx6kp6-zFDtDT0tCkmFRQhcP7t-a"
+      ]
 # This configuration is loaded before any dependency and is restricted
 # to this project. If another project depends on this project, this
 # file won't be loaded nor affect the parent project. For this reason,

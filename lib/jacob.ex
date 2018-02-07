@@ -18,7 +18,7 @@ defmodule Jacob.Bot do
     # raise "Exiting right away..."
 
     Helpers.spawn_process(fn -> :timer.apply_after 5000, Service.Watcher, :start_watching, [] end, true)
-    Helpers.spawn_process(fn -> :timer.apply_after 3000, Service.Watcher, :start_url_warmup, [] end, true)
+    # Helpers.spawn_process(fn -> :timer.apply_after 3000, Service.Watcher, :start_url_warmup, [] end, true)
 
     {:ok, state}
   end
@@ -79,10 +79,12 @@ defmodule Jacob.Bot do
   def handle_info({:send_message, message, destination}, slack, state) do
     IO.puts "Resolving recepient #{destination}"
     channel =
-    [&Slack.Lookups.lookup_direct_message_id/2, &Slack.Lookups.lookup_channel_id/2, fn _arg, _slack -> nil end]
-      |> Enum.reduce_while(destination, fn f, arg -> f |> wrap_func("@" <> arg, slack) end)
+    [wrap_func(&Slack.Lookups.lookup_channel_id/2, "#"), wrap_func(&Slack.Lookups.lookup_direct_message_id/2, "@"), fn _arg, _slack -> {:cont, nil} end]
+      |> Enum.reduce_while(destination, fn f, arg -> f.(arg, slack) end)
     case channel do
       nil ->
+        IO.puts "Your message could not be send. Destination *#{destination}* could not be resolved."
+      ^destination ->
         IO.puts "Your message could not be send. Destination *#{destination}* could not be resolved."
       _ -> send_message message, channel, slack
     end
@@ -120,18 +122,49 @@ defmodule Jacob.Bot do
 
   # Private functions
 
-  defp wrap_func(func, arg, slack) do
-    case func.(arg, slack) do
-      nil -> {:cont, arg}
-      x -> {:halt, x}
+  defp wrap_func(func, prefix) when prefix |> is_binary do
+    fn arg, slack ->
+      try do
+        new_arg = prefix <> arg
+        IO.puts "Probing #{inspect new_arg}"
+        case func.(new_arg, slack) do
+          nil -> {:cont, arg}
+          x -> {:halt, x}
+        end
+      rescue
+        _ -> {:cont, arg}
+      end
     end
   end
 
-  defp wrap_func(func, msg, channel, slack) do
-    case func.(msg, channel, slack) do
-      nil -> {:cont, msg}
-      x -> {:halt, x}
-    end
+  defp wrap_func(func, arg, slack, prefixes) when prefixes |> is_list do
+    prefixes |> Enum.reduce_while(nil,
+    fn prefix, _ ->
+      new_arg = prefix <> arg
+      IO.puts "Probimg #{inspect new_arg}"
+      try do
+        case func.(new_arg, slack) do
+          nil -> {:cont, nil}
+          x -> {:halt, x}
+        end
+      rescue
+        _ -> {:cont, nil}
+      end
+    end)
+  end
+
+  defp wrap_func(func, msg, channel, slack, prefixes) when prefixes |> is_list do
+    prefixes |> Enum.reduce_while(nil,
+    fn prefix, _ ->
+      try do
+        case func.(prefix <> msg, channel, slack) do
+          nil -> {:cont, nil}
+          x -> {:halt, x}
+        end
+      rescue
+      _ -> {:cont, nil}
+      end
+    end)
   end
 
   def process_how_is_he_doing(msg, channel, slack) do

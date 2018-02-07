@@ -22,9 +22,7 @@ use Mix.Config
       # {"kafka", :on},
     {"aos", :on}, {"cloud_client", :on}],
   notify_destination:
-    "dpyatkov"
-
-  ,
+    "dpyatkov",
 
   urls_to_warmup:
     [
@@ -40,11 +38,17 @@ use Mix.Config
   config :rabbitmq_sender,
     rabbit_options:
       [
-        host: "rhino.rmq.cloudamqp.com",
-        username: "ftudzxhj",
-        virtual_host: "ftudzxhj",
-        password: "FojWUx6kp6-zFDtDT0tCkmFRQhcP7t-a"
+        host: "localhost",
+        username: "hunky",
+        virtual_host: "/",
+        password: "hunky"
       ]
+      # [
+      #   host: "rhino.rmq.cloudamqp.com",
+      #   username: "ftudzxhj",
+      #   virtual_host: "ftudzxhj",
+      #   password: "FojWUx6kp6-zFDtDT0tCkmFRQhcP7t-a"
+      # ]
 # This configuration is loaded before any dependency and is restricted
 # to this project. If another project depends on this project, this
 # file won't be loaded nor affect the parent project. For this reason,

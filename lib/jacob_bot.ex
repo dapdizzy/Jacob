@@ -12,12 +12,12 @@ defmodule Jacob do
         RabbitMQReceiver,
         [
           [
-            host: "rhino.rmq.cloudamqp.com",
-            username: "ftudzxhj",
-            virtual_host: "ftudzxhj",
-            password: "FojWUx6kp6-zFDtDT0tCkmFRQhcP7t-a"
+            host: "localhost",
+            username: "hunky",
+            virtual_host: "/",
+            password: "hunky"
           ],
-          "AXMsg1",
+          "bot_queue",
           Helpers,
           :handle_send_to_slack_request,
           true,

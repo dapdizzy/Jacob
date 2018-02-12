@@ -153,18 +153,15 @@ defmodule Jacob.Bot do
     end)
   end
 
-  defp wrap_func(func, msg, channel, slack, prefixes) when prefixes |> is_list do
-    prefixes |> Enum.reduce_while(nil,
-    fn prefix, _ ->
-      try do
-        case func.(prefix <> msg, channel, slack) do
-          nil -> {:cont, nil}
-          x -> {:halt, x}
-        end
-      rescue
-      _ -> {:cont, nil}
+  defp wrap_func(func, msg, channel, %{} = slack) do
+    try do
+      case func.(msg, channel, slack) do
+        nil -> {:cont, msg}
+        x -> {:halt, x}
       end
-    end)
+    rescue
+      _ -> {:cont, msg}
+    end
   end
 
   def process_how_is_he_doing(msg, channel, slack) do
@@ -454,7 +451,7 @@ defmodule Jacob.Bot do
       ->
         you_are_welcome_text(language)
         # Slack.Lookups.lookup_user_name(message.user, slack) <> " " <>
-      true -> :nothing
+      true -> nil #:nothing
     end
   end
 

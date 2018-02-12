@@ -44,7 +44,7 @@ defmodule Jacob.Bot do
     #   _ -> :nothing
     # end
 
-    {:ok, state |> Map.put(message.channel, {message.user, message.text})}
+    {:ok, state |> Map.put(message.channel, {message[:user] || "[no user]", message[:text] || "[no text]"})}
 
     # result =
     # [&process_dlls/3, &process_service_op/3, &dummy/3]
@@ -413,13 +413,13 @@ defmodule Jacob.Bot do
   defp has_mention?(text), do: ~r/\<\@\w+\>/ |> Regex.match?(text)
 
   defp personal_mention?(message, slack),
-    do: String.contains?(message.text, slack.me.id)
-    or  message.channel == Slack.Lookups.lookup_direct_message_id(message.user, slack)
+    do: (with txt <- message[:text], do: txt != nil && String.contains?(txt, slack.me.id))
+    or  (with user <- message[:user], do: user != nil && message.channel == Slack.Lookups.lookup_direct_message_id(user, slack))
 
   defp process_personal_message(message, slack) do
     result =
-    [&freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3, &dummy/3]
-    |> Enum.reduce_while(message.text, fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
+    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3, &dummy/3]
+    |> Enum.reduce_while(message[:text], fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil
     #   [_h1|_t1] = list ->
@@ -502,6 +502,10 @@ defmodule Jacob.Bot do
 
   def send_message_to_slack(server, message, destination) do
     server |> send({:send_message, message, destination})
+  end
+
+  def process_no_text(message, _slack, _state) do
+    unless message[:text], do: :silent
   end
 
 end

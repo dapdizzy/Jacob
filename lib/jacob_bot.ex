@@ -23,7 +23,46 @@ defmodule Jacob do
           true,
           [name: RabbitMQReceiver]
         ]
-      )
+      ),
+      worker(
+        RabbitMQSender,
+        [
+          [
+            host: "localhost",
+            username: "hunky",
+            virtual_host: "/",
+            password: "hunky"
+          ],
+          [name: RemoteExecutionSender],
+          [
+            exchange: "topic_exchange",
+            exchange_type: :topic,
+            rpc_mode: true,
+            reply_to: "remote_execute_reply_queue"
+          ]
+        ]
+      ),
+    worker(
+      RabbitMQReceiver,
+      [
+        [
+          host: "localhost",
+          username: "hunky",
+          virtual_host: "/",
+          password: "hunky"
+        ],
+        "remote_execute_reply_queue",
+        Helpers,
+        :handle_remote_execution_reply,
+        true,
+        []
+      ],
+      id: RemoteExecutionRepliesReceiver
+    ),
+    worker(
+      PendingRequests,
+      []
+    )
       # Define workers and child supervisors to be supervised
       # worker(Jacob.Worker, [arg1, arg2, arg3]),
     ]

@@ -33,7 +33,8 @@ defmodule Jacob.Mixfile do
       {:cipher, ">= 1.2.0"},
       # {:rabbitmq_receiver, "~> 0.1.2", runtime: false}
       {:rabbitmq_receiver, "~> 0.1.5"}, # Potential breaking change here.
-      {:rabbitmq_sender, "~> 0.1.6"},
+      # {:rabbitmq_sender, "~> 0.1.6"},
+      {:rabbitmq_sender, "~> 0.1.7"}
     ]
   end
 end

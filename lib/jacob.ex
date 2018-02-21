@@ -164,6 +164,20 @@ defmodule Jacob.Bot do
     end
   end
 
+  def process_remote_script_execution(msg, channel, slack) do
+    ~r/^\s*remote\s+execute\s+(?<command>[\w_\.]+)\s+on\s+(?<destination>[\w\._]+)/miu
+      |> Regex.named_captures(msg)
+      |> case do
+        nil -> nil
+        %{"command" => command, "destination" => destination} ->
+          correlation_id = RemoteExecutionSender |> RabbitMQSender.send_message(destination, command, true)
+          PendingRequests.add_pending_request(command, correlation_id)
+          # A kind of debug info
+          IO.puts "Your request has been captured with correlation_id: #{correlation_id}"
+          "Your command has been submitted to #{destination} for processing. Response will be delivered soon."
+      end
+  end
+
   def process_how_is_he_doing(msg, channel, slack) do
     env = Application.get_env(:jacob_bot, :env)
     rex = "how\\s+[\\w\\W]*\\s*#{env}\\s+(?<service_name>\\w+)\\s+doing"
@@ -418,7 +432,10 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3, &dummy/3]
+    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3,
+    &process_remote_script_execution/3,
+     # Add new handler here
+     &dummy/3]
     |> Enum.reduce_while(message[:text], fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil

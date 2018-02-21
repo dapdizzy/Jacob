@@ -106,7 +106,7 @@ defmodule Helpers do
     :jacob_ets |> ets_insert(:frozen, false)
   end
 
-  def handle_send_to_slack_request(request) do
+  def handle_send_to_slack_request(%ReceiverMessage{payload: request}) do
     case request |> String.split("::", parts: 2) do
       [message, destination|_t] ->
         Jacob |> Jacob.Bot.send_message_to_slack(destination, message)

@@ -38,7 +38,7 @@ defmodule Jacob do
             exchange: "topic_exchange",
             exchange_type: :topic,
             rpc_mode: true,
-            reply_to: "remote_execute_reply_queue"
+            reply_queue: "remote_execute_reply_queue"
           ]
         ]
       ),

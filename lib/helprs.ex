@@ -109,11 +109,15 @@ defmodule Helpers do
   def handle_send_to_slack_request(%ReceiverMessage{payload: request}) do
     case request |> String.split("::", parts: 2) do
       [message, destination|_t] ->
-        Jacob |> Jacob.Bot.send_message_to_slack(destination, message)
+        Jacob |> Jacob.Bot.send_message_to_slack(message, destination)
         IO.puts "Submitting a message [#{message}] to #{destination} via our own Slack Bot Jacob"
       _ ->
         IO.puts "Unable to parse incoming request [#{request}]"
     end
+  end
+
+  def handle_remote_execution_reply(%ReceiverMessage{payload: payload, correlation_id: correlation_id}) do
+    Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id #{correlation_id} arrived:\n#{payload}", "dpyatkov")
   end
 
 end

@@ -175,7 +175,7 @@ defmodule Jacob.Bot do
           PendingRequests.add_pending_request(exec_command, correlation_id)
           # A kind of debug info
           IO.puts "Your request has been captured with correlation_id: #{correlation_id}"
-          "Your command [#{exec_command}] has been submitted to #{destination} for processing with correlation_if #{correlation_id} . Response will be delivered soon."
+          "Your command *#{exec_command}* has been submitted to *#{destination}* for processing with correlation_id *#{correlation_id}* . Response will be delivered soon."
       end
   end
 

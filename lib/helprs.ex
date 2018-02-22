@@ -117,7 +117,7 @@ defmodule Helpers do
   end
 
   def handle_remote_execution_reply(%ReceiverMessage{payload: payload, correlation_id: correlation_id}) do
-    Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id #{correlation_id} arrived:\n#{payload}", "dpyatkov")
+    Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id *#{correlation_id}* arrived:\n*#{payload}*", "dpyatkov")
   end
 
 end

@@ -1,4 +1,4 @@
-defmodule Service.Watcher do
+defmodule Deprecated.Service.Watcher do
   def start_watching do
     # IO.puts "Jacob is mapped to #{Slack |> Process.whereis |> inspect}"
     IO.puts "Registered processed:"

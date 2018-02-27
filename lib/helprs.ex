@@ -117,7 +117,13 @@ defmodule Helpers do
   end
 
   def handle_remote_execution_reply(%ReceiverMessage{payload: payload, correlation_id: correlation_id}) do
-    Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id *#{correlation_id}* arrived:\n*#{payload}*", "dpyatkov")
+    if correlation_id |> PendingRequests.has_pending_request? do
+      Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id *#{correlation_id}* arrived:\n*#{payload}*", "dpyatkov")
+      PendingRequests.remove_pending_request correlation_id
+    else
+      IO.puts "Pending request with correlation id [#{correlation_id}] is not found."
+    end
+    # Jacob |> Jacob.Bot.send_message_to_slack("Reply for request with correlation id *#{correlation_id}* arrived:\n*#{payload}*", "dpyatkov")
   end
 
 end

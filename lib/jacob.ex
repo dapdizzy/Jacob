@@ -17,7 +17,8 @@ defmodule Jacob.Bot do
     IO.puts "Connected as #{slack.me.name}"
     # raise "Exiting right away..."
 
-    Helpers.spawn_process(fn -> :timer.apply_after 5000, Service.Watcher, :start_watching, [] end, true)
+    # Temporariliy comment it out. Move Service watchers to the new service_watcher_sup module.
+    # Helpers.spawn_process(fn -> :timer.apply_after 5000, Service.Watcher, :start_watching, [] end, true)
     # Helpers.spawn_process(fn -> :timer.apply_after 3000, Service.Watcher, :start_url_warmup, [] end, true)
 
     {:ok, state}
@@ -126,7 +127,7 @@ defmodule Jacob.Bot do
     fn arg, slack ->
       try do
         new_arg = prefix <> arg
-        IO.puts "Probing #{inspect new_arg}"
+        IO.puts "Probing #{inspect new_arg} via #{inspect func}"
         case func.(new_arg, slack) do
           nil -> {:cont, arg}
           x -> {:halt, x}
@@ -162,6 +163,24 @@ defmodule Jacob.Bot do
     rescue
       _ -> {:cont, msg}
     end
+  end
+
+  def resume_jobs(msg, channel, slack) do
+    ~r/resume\s+jobs/miU
+      |> Regex.match?(msg)
+      |> if do
+        Service.Watcher.resume_all
+        "All jobs are now resumed.\nYou can pause the jobs with: `pause jobs` command."
+      end
+  end
+
+  def pause_jobs(msg, channel, slack) do
+    ~r/pause\s+jobs/miU
+      |> Regex.match?(msg)
+      |> if do
+        Service.Watcher.pause_all
+        "All jobs are now standing by.\nYou can resume them with: `resume jobs` command."
+      end
   end
 
   def process_remote_script_execution(msg, channel, slack) do
@@ -435,6 +454,8 @@ defmodule Jacob.Bot do
     result =
     [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3,
     &process_remote_script_execution/3,
+    &pause_jobs/3,
+    &resume_jobs/3,
      # Add new handler here
      &dummy/3]
     |> Enum.reduce_while(message[:text], fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)

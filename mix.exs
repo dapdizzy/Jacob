@@ -14,7 +14,7 @@ defmodule Jacob.Mixfile do
   #
   # Type "mix help compile.app" for more information
   def application do
-    [applications: [:logger, :slack],
+    [applications: [:logger, :slack, :service_watcher_sup],
      mod: {Jacob, []}]
   end
 
@@ -34,7 +34,8 @@ defmodule Jacob.Mixfile do
       # {:rabbitmq_receiver, "~> 0.1.2", runtime: false}
       {:rabbitmq_receiver, "~> 0.1.6"},
       # {:rabbitmq_sender, "~> 0.1.6"},
-      {:rabbitmq_sender, "~> 0.1.8"}
+      {:rabbitmq_sender, "~> 0.1.8"},
+      {:service_watcher_sup, "~> 0.1.1"}
     ]
   end
 end

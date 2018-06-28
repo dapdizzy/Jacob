@@ -160,7 +160,9 @@ defmodule Jacob.Bot do
         x -> {:halt, x}
       end
     rescue
-      _ -> {:cont, msg}
+      ex ->
+        IO.puts "An error occured: #{inspect ex}"
+        {:cont, msg}
     end
   end
 
@@ -315,6 +317,22 @@ defmodule Jacob.Bot do
     end
   end
 
+  def wrap_proces_supervisors_ident(user_id, originating_channel_id) do
+    fn msg, _channel, slack ->
+      service_supervisors_ident(msg, user_id, originating_channel_id, slack)
+    end
+  end
+
+  def service_supervisors_ident(msg, user_id, originating_channel_id, slack) do
+    IO.puts "In service_supervosors_ident with message: #{msg}"
+    if ~r/supervisors\W+ident/i |> Regex.match?(msg) do
+      IO.puts "Regex matched, now going to send command"
+      result = send_command_message("commands", :ident, [], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+      IO.puts "send_command_message returned #{result}"
+      "Your command has been submitted"
+    end
+  end
+
   def process_stop(msg, channel, slack) do
     if (~r/stop/ |> Regex.match(msg)) && (:notifications |> Helpers.ets_exist?) do
       notification_options =
@@ -418,7 +436,9 @@ defmodule Jacob.Bot do
 
   defp process_personal_message(message, slack) do
     result =
-    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3, &process_thank_you/3, &dummy/3]
+    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3,
+    wrap_proces_supervisors_ident(message.user, message.channel),
+    &process_thank_you/3, &dummy/3]
     |> Enum.reduce_while(message[:text], fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do
     #   nil -> nil
@@ -445,7 +465,8 @@ defmodule Jacob.Bot do
     {has_thank_you, language} = message |> has_thank_you?
     cond do
       has_thank_you
-      && ((!(message |> has_mention?)) || (message |> personal_mention?(slack)))
+      # This check seems redundant in the light of that any processing handlers are fired only for 'personal' messages, which means the handler could only get executed for a 'personal' message, so Jacob has to handle it for sure.
+      # && ((!(message |> has_mention?)) || (message |> personal_mention?(slack)))
       # For now we don't pass channel information to the handle functions, thuis we cannot reason about who sent the message
       # && (state |> Map.get(message.channel, nil) |> is_my_message?(slack))
       ->
@@ -504,8 +525,40 @@ defmodule Jacob.Bot do
     server |> send({:send_message, message, destination})
   end
 
+  def send_command_message(topic, command, args, options \\ []) do
+    IO.puts "In send_command_message"
+    map = %{"function" => command, "args" => args, "reply_to" => options[:reply_to], "mention" => options[:mention]}
+    IO.puts "inspected map: #{inspect map}"
+    encoded_message = Poison.encode!(map)
+    IO.puts "encoded_message is #{encoded_message}"
+    RabbitMQTopicSender |> RabbitMQSender.send_message(topic, encoded_message, false, reply_to: topic) # User topic as a reply_to option to allow topic retrieval on receiving end which is reqiored.
+  end
+
   def process_no_text(message, _slack, _state) do
     unless message[:text], do: :silent
+  end
+
+  defp user_mention(user) do
+    "<@" <> user <> ">"
+  end
+
+  defp lookup_destination_name(slack, destination_code) do
+    IO.puts "Trying to resolve destination code: #{destination_code}"
+    destination =
+      [&Slack.Lookups.lookup_user_name/2, &Slack.Lookups.lookup_channel_name/2]
+        |> Enum.reduce_while(nil, fn fun, acc ->
+          try do
+            fun.(destination_code, slack)
+          rescue
+            _ -> nil
+          end |>
+          case do
+            nil -> {:cont, nil}
+            x -> {:halt, x}
+          end
+        end)
+    IO.puts "Destination resolved to: #{destination}"
+    destination |> String.slice(1..-1)
   end
 
 end

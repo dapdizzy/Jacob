@@ -9,7 +9,7 @@ use Mix.Config
   service_aliases:
     %{
       # "kafka" => "KafkaProxyConnector",
-      "aos" => "AOS60$01",
+      "aos" => "AOS60$02",
       "cloud_client" => "WAX3PL Stage Cloud Client"
     },
   service_deps:

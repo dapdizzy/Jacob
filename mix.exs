@@ -30,10 +30,12 @@ defmodule Jacob.Mixfile do
   defp deps do
     [
       {:slack, "~> 0.9.1"},
-      {:cipher, ">= 1.2.0"},
+      {:cipher, "~> 1.3"},
+      # {:cipher, ">= 1.2.0"},
       # {:rabbitmq_receiver, "~> 0.1.2", runtime: false}
       {:rabbitmq_receiver, "~> 0.1.5"}, # Potential breaking change here.
-      {:rabbitmq_sender, "~> 0.1.6"},
+      {:rabbitmq_sender, "~> 0.1.8"},
+      {:poison, "~> 3.1"}
     ]
   end
 end

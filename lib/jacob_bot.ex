@@ -39,6 +39,18 @@ defmodule Jacob do
         id: ServiceSupervisorsManagementReceiver
       ),
       worker(
+        RabbitMQReceiver,
+        [
+          rabbit_options,
+          "bot_instruction_queue",
+          BotInstructionProcessor,
+          :process_instruction,
+          true,
+          [name: BotInstructionReceiver]
+        ],
+        id: BotInstructionReceiver
+      ),
+      worker(
         RabbitMQSender,
         [
           rabbit_options,

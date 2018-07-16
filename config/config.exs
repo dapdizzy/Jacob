@@ -24,6 +24,8 @@ use Mix.Config
   notify_destination:
     "dpyatkov",
 
+  instruction_queue: "bot_instruction_queue",
+
   urls_to_warmup:
     [
       "https://warm-savannah-34152.herokuapp.com/"

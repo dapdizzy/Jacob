@@ -33,7 +33,7 @@ defmodule Jacob.Bot do
 
     result =
     case message |> personal_mention?(slack) do
-      true  -> process_personal_message message, slack
+      true  -> process_personal_message message, slack, state
       false -> :nothing
     end
 
@@ -317,9 +317,9 @@ defmodule Jacob.Bot do
     end
   end
 
-  def wrap_ext_processing(user_id, originating_channel_id, processor) do
+  def wrap_ext_processing(user_id, originating_channel_id, processor, state \\ nil) do
     fn msg, _channel, slack ->
-      processor.(msg, user_id, originating_channel_id, slack)
+      unless state, do: processor.(msg, user_id, originating_channel_id, slack), else: processor.(msg, user_id, originating_channel_id, slack, state)
     end
   end
 
@@ -341,6 +341,51 @@ defmodule Jacob.Bot do
       IO.puts "send_command_message returned #{result}"
       "Your command has been submitted"
     end
+  end
+
+  def process_context_choice(msg, user_id, originating_channel_id, slack, state)
+
+  def process_context_choice(msg, user_id, originating_channel_id, slack, %{context: %{ref: _ref, pid: _pid, singular_choice_command: singular_choice_command, multiple_choice_command: multiple_choice_command}}) do
+    case ChoiceContext.accept(msg) do
+      {:result, %{} = result} ->
+        positive_processing_reply =
+          case result do
+            %{selected_option: selected_option} ->
+              send_command_message("commands", singular_choice_command, [selected_option], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+              "*#{singular_choice_command}* for selection *#{selected_option}* has been submitted. Anticipate reply soon."
+              # Process single valid selected option
+            %{selected_options: selected_options} ->
+              send_command_message("commands", multiple_choice_command, [selected_options], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+              "*#{multiple_choice_command}* for selected options *#{selected_options |> Enum.join(~S|, |)}* has been submitted. Anticipate reply soon."
+              #Process multiple selected options
+          end
+        informational_reply = with reply when reply != nil and reply != "" <- result[:reply], do: reply
+        (for x when x != "" <- [positive_processing_reply, informational_reply], do: x)
+          |> Enum.join("\n")
+      x -> "Invalid result format: #{inspect x}"
+    end
+    # result = send_command_message("commands", :process_choices, [nil, nil], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+  end
+
+  def process_context_choice(_msg, _user_id, _originating_channel_id, _slack, _state) do
+    nil
+  end
+
+  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command)
+
+  def allocate_context(%{context: %{pid: _pid, ref: _ref}} = state, _context_timeout, _choices_map, _singular_choice_command, _multiple_choice_command) do
+    {:already_in_context, state}
+  end
+
+  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command) do
+    pid =
+      case ChoiceContext.start_link(context_timeout, choices_map) do
+        {:ok, pid} -> pid
+        {:error, {elready_started, pid}} -> pid
+        x -> raise "ChoiceContext.start_link() resulted in #{inspect x}"
+      end
+    ref = pid |> Process.monitor()
+    {:ok, %{state|context: %{pid: pid, ref: ref, singular_choice_command: singular_choice_command, multiple_choice_command: multiple_choice_command}}}
   end
 
   def process_stop(msg, channel, slack) do
@@ -444,9 +489,12 @@ defmodule Jacob.Bot do
     do: (with txt <- message[:text], do: txt != nil && String.contains?(txt, slack.me.id))
     or  (with user <- message[:user], do: user != nil && message.channel == Slack.Lookups.lookup_direct_message_id(user, slack))
 
-  defp process_personal_message(message, slack) do
+  defp process_personal_message(message, slack, state) do
     result =
-    [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3,
+    [
+    # Context processing should go first, so placing it here in the front
+    wrap_ext_processing(message.user, message.channel, &process_context_choice/5, state),
+    &process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3,
     wrap_ext_processing(message.user, message.channel, &service_supervisors_ident/4),
     wrap_ext_processing(message.user, message.channel, &list_supervisors_services/4),
     &process_thank_you/3, &dummy/3]
@@ -571,5 +619,7 @@ defmodule Jacob.Bot do
     IO.puts "Destination resolved to: #{destination}"
     destination |> String.slice(1..-1)
   end
+
+
 
 end

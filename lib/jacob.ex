@@ -317,9 +317,9 @@ defmodule Jacob.Bot do
     end
   end
 
-  def wrap_proces_supervisors_ident(user_id, originating_channel_id) do
+  def wrap_ext_processing(user_id, originating_channel_id, processor) do
     fn msg, _channel, slack ->
-      service_supervisors_ident(msg, user_id, originating_channel_id, slack)
+      processor.(msg, user_id, originating_channel_id, slack)
     end
   end
 
@@ -328,6 +328,16 @@ defmodule Jacob.Bot do
     if ~r/supervisors\W+ident/i |> Regex.match?(msg) do
       IO.puts "Regex matched, now going to send command"
       result = send_command_message("commands", :ident, [], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+      IO.puts "send_command_message returned #{result}"
+      "Your command has been submitted"
+    end
+  end
+
+  def list_supervisors_services(msg, user_id, originating_channel_id, slack) do
+    IO.puts "In list_supervisors_services with message: #{msg}"
+    if ~r/supervisors\W+list_services/i |> Regex.match?(msg) do
+      IO.puts "Regex matched, now going to send command"
+      result = send_command_message("commands", :list_services_with_choice, [nil, nil], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
       IO.puts "send_command_message returned #{result}"
       "Your command has been submitted"
     end
@@ -437,7 +447,8 @@ defmodule Jacob.Bot do
   defp process_personal_message(message, slack) do
     result =
     [&process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3,
-    wrap_proces_supervisors_ident(message.user, message.channel),
+    wrap_ext_processing(message.user, message.channel, &service_supervisors_ident/4),
+    wrap_ext_processing(message.user, message.channel, &list_supervisors_services/4),
     &process_thank_you/3, &dummy/3]
     |> Enum.reduce_while(message[:text], fn f, msg -> wrap_func(f, msg, Slack.Lookups.lookup_direct_message_id(message.user, slack), slack) end)
     # case ~r/(?<name>[-.0-9a-zA-Z]+)\.dll\b/U  |> Regex.scan(message.text) do

@@ -118,6 +118,21 @@ defmodule Jacob.Bot do
     {:ok, state}
   end
 
+  def handle_info({:create_context,
+    %{
+      timeout: timeout,
+      choices: choices,
+      singular_choice_command: singular_choice_command,
+      multiple_choice_command: multiple_choice_command,
+      choice_text: prompt,
+      reply_to: destination
+    }}, slack, state) do
+    IO.puts "Going to create context with the following parameters:\ntimeout = #{timeout},\nchoices = #{inspect choices},\nsingular_choice_command = #{singular_choice_command},\nmultiple_choice_command = #{multiple_choice_command}."
+    allocate_context(state, timeout, choices, singular_choice_command, multiple_choice_command)
+    self() |> send_message_to_slack(prompt, destination)
+    {:ok, state}
+  end
+
   def handle_info(_, _, state), do: {:ok, state}
 
   # Private functions
@@ -371,6 +386,13 @@ defmodule Jacob.Bot do
     nil
   end
 
+  def process_poll_service_statuses(msg, user_id, originating_channel_id, slack) do
+    if ~r/poll\s+services?\s+status(es)?$/iU |> Regex.match?(msg) do
+      send_command_message("commands", :poll_service_statuses, [], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
+      "Your command has been submitted. Anticipate reply in a few seonds..."
+    end
+  end
+
   def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command)
 
   def allocate_context(%{context: %{pid: _pid, ref: _ref}} = state, _context_timeout, _choices_map, _singular_choice_command, _multiple_choice_command) do
@@ -386,6 +408,10 @@ defmodule Jacob.Bot do
       end
     ref = pid |> Process.monitor()
     {:ok, %{state|context: %{pid: pid, ref: ref, singular_choice_command: singular_choice_command, multiple_choice_command: multiple_choice_command}}}
+  end
+
+  def create_context(context_data) do
+    Jacob |> send({:create_context, context_data})
   end
 
   def process_stop(msg, channel, slack) do
@@ -494,6 +520,7 @@ defmodule Jacob.Bot do
     [
     # Context processing should go first, so placing it here in the front
     wrap_ext_processing(message.user, message.channel, &process_context_choice/5, state),
+    wrap_ext_processing(message.user, message.channel, &process_poll_service_statuses/4),
     &process_no_text/3, &freeze_bot/3, &unfreeze_bot/3, &restart_service/3, &process_how_is_he_doing/3, &process_dlls/3, &process_service_op/3,
     wrap_ext_processing(message.user, message.channel, &service_supervisors_ident/4),
     wrap_ext_processing(message.user, message.channel, &list_supervisors_services/4),

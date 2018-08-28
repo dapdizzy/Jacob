@@ -124,11 +124,12 @@ defmodule Jacob.Bot do
       choices: choices,
       singular_choice_command: singular_choice_command,
       multiple_choice_command: multiple_choice_command,
-      choice_text: prompt,
-      reply_to: destination
+      prompt: prompt,
+      reply_to: destination,
+      requestor: requestor
     }}, slack, state) do
     IO.puts "Going to create context with the following parameters:\ntimeout = #{timeout},\nchoices = #{inspect choices},\nsingular_choice_command = #{singular_choice_command},\nmultiple_choice_command = #{multiple_choice_command}."
-    allocate_context(state, timeout, choices, singular_choice_command, multiple_choice_command)
+    allocate_context(state, timeout, choices, singular_choice_command, multiple_choice_command, fn -> self() |> send_message_to_slack(requestor <> " The context has ended.", destination) end)
     self() |> send_message_to_slack(prompt, destination)
     {:ok, state}
   end
@@ -389,21 +390,21 @@ defmodule Jacob.Bot do
   def process_poll_service_statuses(msg, user_id, originating_channel_id, slack) do
     if ~r/poll\s+services?\s+status(es)?$/iU |> Regex.match?(msg) do
       send_command_message("commands", :poll_service_statuses, [], [reply_to: slack |> lookup_destination_name(originating_channel_id), mention: user_mention(user_id)])
-      "Your command has been submitted. Anticipate reply in a few seonds..."
+      "Your command has been submitted. Anticipate reply in a few seconds..."
     end
   end
 
-  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command)
+  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command, context_timeout_action)
 
-  def allocate_context(%{context: %{pid: _pid, ref: _ref}} = state, _context_timeout, _choices_map, _singular_choice_command, _multiple_choice_command) do
+  def allocate_context(%{context: %{pid: _pid, ref: _ref}} = state, _context_timeout, _choices_map, _singular_choice_command, _multiple_choice_command, _context_timeout_action) do
     {:already_in_context, state}
   end
 
-  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command) do
+  def allocate_context(state, context_timeout, choices_map, singular_choice_command, multiple_choice_command, context_timeout_action) do
     pid =
-      case ChoiceContext.start_link(context_timeout, choices_map) do
+      case ChoiceContext.start_link(context_timeout, choices_map, context_timeout_action) do
         {:ok, pid} -> pid
-        {:error, {elready_started, pid}} -> pid
+        {:error, {:already_started, pid}} -> pid
         x -> raise "ChoiceContext.start_link() resulted in #{inspect x}"
       end
     ref = pid |> Process.monitor()

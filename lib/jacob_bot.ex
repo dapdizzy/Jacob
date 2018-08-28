@@ -44,7 +44,7 @@ defmodule Jacob do
           rabbit_options,
           "bot_instruction_queue",
           BotInstructionProcessor,
-          :process_instruction,
+          :process_management_command,
           true,
           [name: BotInstructionReceiver]
         ],

@@ -36,7 +36,8 @@ defmodule Jacob.Mixfile do
       {:rabbitmq_receiver, "~> 0.1.5"}, # Potential breaking change here.
       {:rabbitmq_sender, "~> 0.1.8"},
       {:poison, "~> 3.1"},
-      {:choise_context, "~> 0.1.4", hex: :choice_context}
+      {:choice_context, "~> 0.1.5"}
+      # {:choise_context, "~> 0.1.4", hex: :choice_context}
     ]
   end
 end
